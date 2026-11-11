@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kubernetes security: what belongs where (CKS study map)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eef2f5;
+    --surface: #ffffff;
+    --ink: #13242c;
+    --ink-soft: #52656f;
+    --line: #d3dde2;
+
+    --l-cloud:  #2b7bb9;
+    --l-cluster:#4b57c4;
+    --l-node:   #7a4bb5;
+    --l-deploy: #0e8a7d;
+    --l-pod:    #b8741a;
+    --l-image:  #c2415d;
+    --l-code:   #4f8a2b;
+
+    --cs: #1f5fa6;
+    --ch: #0d7468;
+    --sh: #6a46a6;
+    --mv: #9a5806;
+    --sc: #b02c47;
+    --rt: #3d7a1e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1519;
+      --surface: #121f26;
+      --ink: #e6eff3;
+      --ink-soft: #9eb3bd;
+      --line: #2a414c;
+
+      --l-cloud:  #6bb4ec;
+      --l-cluster:#929bf3;
+      --l-node:   #bc9ff1;
+      --l-deploy: #4fd1c0;
+      --l-pod:    #f0b45a;
+      --l-image:  #f58ba0;
+      --l-code:   #a3dc73;
+
+      --cs: #72adf0;
+      --ch: #4fd1c0;
+      --sh: #b9a0f2;
+      --mv: #f2b955;
+      --sc: #f58ba0;
+      --rt: #a3dc73;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.45;
+  }
+  main { max-width: 1260px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.75rem; margin: 0 0 8px; letter-spacing: -0.015em; }
+  .lede { margin: 0 0 20px; color: var(--ink-soft); max-width: 70ch; }
+
+  button { font: inherit; color: inherit; }
+  button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .row .label { font-size: 0.82rem; color: var(--ink-soft); margin-right: 2px; }
+
+  .pill, .btn {
+    font-size: 0.82rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 12px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .btn { border-radius: 8px; }
+  .pill:hover, .btn:hover { border-color: var(--ink-soft); }
+  .pill[aria-pressed="true"], .btn[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .pill .w { color: var(--ink-soft); }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { background: none; border: 0; padding: 5px 12px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .seg button:focus-visible { outline-offset: -2px; }
+
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dc, var(--ink-soft)); flex: none; }
+  [data-d="cs"] { --dc: var(--cs); }
+  [data-d="ch"] { --dc: var(--ch); }
+  [data-d="sh"] { --dc: var(--sh); }
+  [data-d="mv"] { --dc: var(--mv); }
+  [data-d="sc"] { --dc: var(--sc); }
+  [data-d="rt"] { --dc: var(--rt); }
+
+  .ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- page grid ---------- */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+
+  /* ---------- layers ---------- */
+  .layer {
+    --a: var(--ink);
+    background: color-mix(in srgb, var(--a) 9%, var(--surface));
+    border: 2px solid var(--a);
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    cursor: default;
+  }
+  .layer .layer { margin-top: 16px; }
+  .l-cloud   { --a: var(--l-cloud); }
+  .l-cluster { --a: var(--l-cluster); }
+  .l-node    { --a: var(--l-node); }
+  .l-deploy  { --a: var(--l-deploy); }
+  .l-pod     { --a: var(--l-pod); }
+  .l-image   { --a: var(--l-image); }
+  .l-code    { --a: var(--l-code); }
+
+  .layer > header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .layer.collapsed > header { margin-bottom: 0; }
+  .layer.collapsed > .layer:first-of-type { margin-top: 14px; }
+  .icon {
+    width: 36px; height: 36px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 10px; background: var(--a); color: var(--surface);
+  }
+  .icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .layer h2 { font-size: 1.08rem; margin: 0; line-height: 1.2; }
+  .layer .what { display: block; font-size: 0.82rem; color: var(--ink-soft); margin-top: 2px; }
+  .htext { flex: 1; min-width: 0; }
+  .layer-actions { display: flex; align-items: center; gap: 6px; }
+
+  .collapse-btn {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  }
+  .collapse-btn:hover { border-color: var(--a); }
+  .collapse-btn svg { width: 16px; height: 16px; transition: transform 0.15s; }
+  .layer.collapsed > header .collapse-btn svg { transform: rotate(-90deg); }
+  .layer.collapsed > .chips { display: none; }
+
+  .place-btn {
+    display: none;
+    background: var(--a); color: var(--surface);
+    border: 0; border-radius: 8px; padding: 5px 10px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  }
+
+  /* ---------- chips ---------- */
+  .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 0.85rem; text-align: left;
+    padding: 5px 11px 5px 9px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .chip[data-kind="config"] { border-style: dashed; border-color: var(--ink-soft); }
+  .chip[data-kind="tool"] { border-color: var(--ink-soft); }
+  .chip .ico { color: var(--ink-soft); width: 13px; height: 13px; }
+  .chip:hover { border-color: var(--ink); }
+  .chip.dim { opacity: 0.2; }
+  .chip.related { box-shadow: 0 0 0 2px var(--dc); border-color: var(--dc); }
+  .chip[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); border-color: var(--ink); }
+
+  /* ---------- inspector ---------- */
+  .inspector {
+    position: sticky; top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 200px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    font-size: 0.88rem;
+  }
+  .inspector h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .inspector .empty { color: var(--ink-soft); margin: 0; }
+  .inspector .empty p { margin: 0 0 10px; }
+  .meta { display: flex; flex-direction: column; gap: 4px; margin: 0 0 12px; color: var(--ink-soft); }
+  .meta span { display: inline-flex; align-items: center; gap: 7px; }
+  .meta b { color: var(--ink); font-weight: 600; }
+  .inspector p.note { margin: 0 0 12px; }
+  .codewrap { position: relative; margin: 0 0 12px; }
+  .codewrap pre {
+    margin: 0; padding: 10px 12px; overflow: auto;
+    background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+    border: 1px solid var(--line); border-radius: 8px;
+    font: 0.78rem/1.5 ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    white-space: pre;
+  }
+  .copy { position: absolute; top: 6px; right: 6px; font-size: 0.72rem; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+  .also h4 { margin: 0 0 6px; font-size: 0.82rem; color: var(--ink-soft); font-weight: 600; }
+  .also ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .also button { width: 100%; text-align: left; background: none; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; cursor: pointer; font-size: 0.82rem; }
+  .also button:hover { border-color: var(--ink); }
+  .pinned { margin-top: 10px; font-size: 0.75rem; color: var(--ink-soft); }
+
+  /* ---------- self-test ---------- */
+  .testbar {
+    display: none;
+    position: sticky; top: 0; z-index: 5;
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  body.testing .testbar { display: block; }
+  .testbar .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .testbar .msg { font-size: 0.88rem; margin: 0; }
+  .testbar .score { font-size: 0.82rem; color: var(--ink-soft); }
+  .tray { display: flex; flex-wrap: wrap; gap: 6px; max-height: 130px; overflow: auto; padding: 2px; }
+  .tray button {
+    font-size: 0.82rem; background: var(--bg);
+    border: 1px solid var(--ink-soft); border-radius: 8px; padding: 4px 10px; cursor: pointer;
+  }
+  .tray button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+  body.testing .chip:not(.placed) { display: none; }
+  body.testing .layer > .chips {
+    min-height: 46px; padding: 6px;
+    border: 1.5px dashed color-mix(in srgb, var(--a) 60%, transparent);
+    border-radius: 10px;
+  }
+  body.testing .place-btn { display: inline-block; }
+  .layer.wrong { animation: shake 0.35s; }
+  @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+  /* ---------- standards table ---------- */
+  .standards { margin-top: 36px; }
+  .standards h2 { font-size: 1.2rem; margin: 0 0 6px; }
+  .standards p.sub { margin: 0 0 12px; color: var(--ink-soft); max-width: 70ch; font-size: 0.9rem; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; min-width: 640px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; font-size: 0.8rem; color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  td.lay { color: var(--ink-soft); }
+
+  details { margin-top: 24px; font-size: 0.88rem; color: var(--ink-soft); max-width: 80ch; }
+  summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  details p { margin: 10px 0 0; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 20; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1020px) {
+    .grid { grid-template-columns: 1fr; }
+    .inspector {
+      order: 2;
+      position: sticky; top: auto; bottom: 8px; z-index: 6;
+      min-height: 0; max-height: 40vh;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+    }
+    main { padding-bottom: 120px; }
+  }
+  @media (max-width: 600px) {
+    main { padding: 20px 10px 120px; }
+    .layer { padding: 12px 10px; border-radius: 12px; }
+    .layer .layer { margin-top: 12px; }
+    .icon { width: 30px; height: 30px; }
+    .icon svg { width: 17px; height: 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chip, .collapse-btn svg, .toast { transition: none; }
+    .layer.wrong { animation: none; }
+  }
+
+  /* ---------- print: one clean sheet, always light ---------- */
+  @media print {
+    :root {
+      --bg: #ffffff; --surface: #ffffff; --ink: #13242c; --ink-soft: #52656f; --line: #c4cfd5;
+      --l-cloud: #2b7bb9; --l-cluster: #4b57c4; --l-node: #7a4bb5; --l-deploy: #0e8a7d; --l-pod: #b8741a; --l-image: #c2415d; --l-code: #4f8a2b;
+      --cs: #1f5fa6; --ch: #0d7468; --sh: #6a46a6; --mv: #9a5806; --sc: #b02c47; --rt: #3d7a1e;
+    }
+    @page { size: A4 portrait; margin: 8mm; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; font-size: 11px; }
+    main { padding: 0; max-width: none; }
+    h1 { font-size: 1.3rem; margin-bottom: 4px; }
+    .lede, .toolbar .row.controls, .inspector, .testbar, .collapse-btn, .place-btn, .toast, details { display: none !important; }
+    .toolbar { margin-bottom: 8px; }
+    .pill { pointer-events: none; padding: 2px 8px; font-size: 0.7rem; }
+    .grid { display: block; }
+    .layer { padding: 8px 10px 10px; border-radius: 10px; break-inside: avoid; }
+    .layer .layer { margin-top: 8px; }
+    .layer > header { margin-bottom: 6px; }
+    .icon { width: 24px; height: 24px; border-radius: 7px; }
+    .icon svg { width: 14px; height: 14px; }
+    .layer h2 { font-size: 0.9rem; }
+    .layer .what { font-size: 0.68rem; }
+    .layer.collapsed > .chips { display: flex !important; }
+    .chips { gap: 4px; }
+    .chip { font-size: 0.68rem; padding: 2px 7px 2px 6px; border-radius: 6px; }
+    .chip.dim { opacity: 1; }
+    .chip .ico { width: 10px; height: 10px; }
+    .standards { margin-top: 12px; break-before: page; }
+    table { font-size: 0.75rem; min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kubernetes security: what belongs where</h1>
+  <p class="lede">Outer layers contain inner ones. Each chip is a control or tool; its dot shows the CKS exam domain. Hover or click a chip for the command to remember and where else it shows up.</p>
+
+  <div class="toolbar">
+    <div class="row" role="group" aria-label="Filter by CKS domain" id="domainRow">
+      <span class="label">CKS domain (weight)</span>
+    </div>
+    <div class="row controls">
+      <div class="seg" role="group" aria-label="Filter by type" id="kindSeg"></div>
+      <button type="button" class="btn" id="collapseBtn">Collapse all</button>
+      <button type="button" class="btn" id="testBtn" aria-pressed="false">Self-test</button>
+      <button type="button" class="btn" id="pngBtn">Download PNG</button>
+      <button type="button" class="btn" id="printBtn">Print / PDF</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="testbar" id="testbar">
+        <div class="top">
+          <p class="msg" id="testMsg" aria-live="polite">Pick a chip below, then click the layer it belongs to.</p>
+          <span class="score" id="testScore"></span>
+        </div>
+        <div class="tray" id="tray"></div>
+        <div class="row" style="margin-top:8px">
+          <button type="button" class="btn" id="restartBtn">Restart</button>
+          <button type="button" class="btn" id="revealBtn">Reveal all and exit</button>
+        </div>
+      </div>
+      <div id="diagram"></div>
+    </div>
+
+    <aside class="inspector" id="inspector" aria-live="polite" aria-label="Chip details"></aside>
+  </div>
+
+  <section class="standards" aria-labelledby="std-h">
+    <h2 id="std-h">Which tool checks against what?</h2>
+    <p class="sub">Only some scanners map to a named standard. The rest use their own rules or rules you write.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Checks against</th><th>Looks at</th><th>Layer</th></tr></thead>
+        <tbody>
+          <tr><td>kube-bench</td><td>CIS Kubernetes Benchmark</td><td>Control plane, etcd, kubelet flags and file permissions</td><td class="lay">Cluster, Node</td></tr>
+          <tr><td>kubesec</td><td>Its own best-practice rules, with a score</td><td>One workload manifest</td><td class="lay">Deployment</td></tr>
+          <tr><td>kube-linter</td><td>Its own configurable checks</td><td>Manifests and Helm charts</td><td class="lay">Deployment</td></tr>
+          <tr><td>Kubescape</td><td>NSA-CISA, MITRE ATT&amp;CK, CIS (also SOC 2)</td><td>Manifests, Helm charts, live clusters</td><td class="lay">Deployment, Cluster</td></tr>
+          <tr><td>Trivy</td><td>Vulnerability databases (CVEs) and misconfiguration rules</td><td>Images, manifests, filesystems and dependencies, live clusters</td><td class="lay">Image, Deployment, Cluster, Code</td></tr>
+          <tr><td>Pod Security Admission</td><td>Pod Security Standards: privileged, baseline, restricted</td><td>Pods, at admission time</td><td class="lay">Deployment</td></tr>
+          <tr><td>Gatekeeper / Kyverno</td><td>Policies you write (Rego or YAML)</td><td>API requests, at admission time</td><td class="lay">Deployment</td></tr>
+          <tr><td>Falco</td><td>Runtime rules on syscalls and events</td><td>Running containers and hosts</td><td class="lay">Node</td></tr>
+          <tr><td>hadolint</td><td>Dockerfile best practices</td><td>Dockerfiles</td><td class="lay">Image</td></tr>
+          <tr><td>cosign</td><td>Sigstore signatures</td><td>Container images</td><td class="lay">Image</td></tr>
+          <tr><td>OWASP Kubernetes Top 10</td><td>A ranked list of risk categories, not a scanner</td><td>No tool "checks against OWASP" directly; the tools above help address its items</td><td class="lay">All</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <details>
+    <summary>Placement notes</summary>
+    <p>Nesting shows scope of concern, not physical placement. A Deployment is a cluster object that creates Pods, and those Pods are scheduled onto nodes. It sits above Pod here because it is where you declare the manifest that policy checks.</p>
+    <p>Gatekeeper, Kyverno and Pod Security Admission are enforced by the API server, but they act on Deployment and Pod manifests, so they are filed under Deployment. NetworkPolicy selects Pods, so it is filed under Pod.</p>
+    <p>Domain tags follow the CKS curriculum as I understand it. Check the current curriculum from the Linux Foundation, since topics move between domains from time to time. Commands are exam-style reminders, not complete runbooks.</p>
+  </details>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- data ---------- */
+  var DOMAINS = {
+    cs: { name: 'Cluster Setup', w: 10 },
+    ch: { name: 'Cluster Hardening', w: 15 },
+    sh: { name: 'System Hardening', w: 15 },
+    mv: { name: 'Microservice Vulnerabilities', w: 20 },
+    sc: { name: 'Supply Chain', w: 20 },
+    rt: { name: 'Monitoring & Runtime', w: 20 }
+  };
+  var KEYNAMES = { trivy: 'Trivy', kubebench: 'kube-bench', seccomp: 'AppArmor / seccomp' };
+
+  var ICONS = {
+    cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+    cluster: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+    node: '<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
+    deploy: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/>',
+    pod: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    image: '<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+    code: '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>'
+  };
+
+  var LAYERS = [
+    { id: 'cloud', name: 'Cloud', what: 'Account, network and hardware', icon: 'cloud', items: [
+      { id: 'iam', label: 'IAM least privilege', d: 'sh', kind: 'config',
+        note: 'Give nodes, CI and pipelines only the cloud permissions they need. Avoid admin roles on node instance profiles.' },
+      { id: 'meta', label: 'Block metadata API', d: 'cs', kind: 'config',
+        note: 'Pods can reach the cloud metadata service and steal node credentials. Block it with an egress NetworkPolicy.',
+        cmd: 'egress:\n- to:\n  - ipBlock:\n      cidr: 0.0.0.0/0\n      except: ["169.254.169.254/32"]' },
+      { id: 'fw', label: 'Private API endpoint, firewall', d: 'sh', kind: 'config',
+        note: 'Keep the API server and nodes off the public internet. Restrict by source IP or VPN and open only the ports you need.' },
+      { id: 'cloudaudit', label: 'Cloud audit logs', d: 'rt', kind: 'config',
+        note: 'Who did what in the cloud account: CloudTrail (AWS), Cloud Audit Logs (GCP), Activity Log (Azure).' }
+    ]},
+    { id: 'cluster', name: 'Cluster', what: 'Control plane: API server, etcd', icon: 'cluster', items: [
+      { id: 'rbac', label: 'RBAC', d: 'ch', kind: 'config',
+        note: 'Least privilege for users and service accounts. Avoid cluster-admin and wildcard verbs or resources.',
+        cmd: 'kubectl auth can-i list secrets -n dev \\\n  --as system:serviceaccount:dev:app\nkubectl create role pod-reader \\\n  --verb=get,list --resource=pods -n dev' },
+      { id: 'apiflags', label: 'API server flags', d: 'ch', kind: 'config',
+        note: 'Edit the static pod manifest. The kubelet restarts the API server when you save.',
+        cmd: '# /etc/kubernetes/manifests/kube-apiserver.yaml\n--anonymous-auth=false\n--authorization-mode=Node,RBAC\n--enable-admission-plugins=NodeRestriction' },
+      { id: 'etcdenc', label: 'etcd encryption', d: 'mv', kind: 'config',
+        note: 'Encrypts Secrets at rest. Point the API server at this file with --encryption-provider-config. Put aescbc before identity, then rewrite existing Secrets.',
+        cmd: 'kind: EncryptionConfiguration\nresources:\n- resources: ["secrets"]\n  providers:\n  - aescbc:\n      keys:\n      - name: key1\n        secret: <base64-32-byte-key>\n  - identity: {}\n\nkubectl get secrets -A -o json | kubectl replace -f -' },
+      { id: 'kubebench-c', label: 'kube-bench (CIS)', d: 'cs', kind: 'tool', key: 'kubebench',
+        note: 'Checks control plane and etcd configuration against the CIS Kubernetes Benchmark.',
+        cmd: 'kube-bench run --targets master,etcd' },
+      { id: 'ingress', label: 'Ingress TLS', d: 'cs', kind: 'config',
+        note: 'Terminate TLS at the Ingress using a TLS Secret.',
+        cmd: 'kubectl create secret tls web-tls \\\n  --cert=tls.crt --key=tls.key\n\n# in the Ingress spec:\ntls:\n- hosts: ["app.example.com"]\n  secretName: web-tls' },
+      { id: 'audit', label: 'Audit policy', d: 'rt', kind: 'config',
+        note: 'Records API requests. You write the policy file, then mount it and the log path into the API server.',
+        cmd: '--audit-policy-file=/etc/kubernetes/audit/policy.yaml\n--audit-log-path=/var/log/kubernetes/audit.log' },
+      { id: 'upgrade', label: 'Upgrade Kubernetes', d: 'ch', kind: 'config',
+        note: 'Old versions have known CVEs. Upgrade control plane first, then nodes, one minor version at a time.',
+        cmd: 'kubeadm upgrade plan' },
+      { id: 'trivy-k', label: 'Trivy cluster scan', d: 'sc', kind: 'tool', key: 'trivy',
+        note: 'Scans a live cluster for vulnerabilities and misconfigurations.',
+        cmd: 'trivy k8s --report summary cluster' }
+    ]},
+    { id: 'node', name: 'Node', what: 'Host OS, kubelet, runtime', icon: 'node', items: [
+      { id: 'minos', label: 'Minimal OS, fewer ports', d: 'sh', kind: 'config',
+        note: 'Remove packages and services you do not need and close listening ports.',
+        cmd: 'systemctl list-units --type=service --state=running\nss -tlnp' },
+      { id: 'seccomp-n', label: 'AppArmor, seccomp profiles', d: 'sh', kind: 'config', key: 'seccomp',
+        note: 'The profile has to exist on the node before a Pod can reference it.',
+        cmd: 'aa-status\napparmor_parser -q /etc/apparmor.d/my-profile\n# seccomp profiles: /var/lib/kubelet/seccomp/' },
+      { id: 'kubelet', label: 'Kubelet hardening', d: 'ch', kind: 'config',
+        note: 'Turn off anonymous access and the read-only port, and delegate authorization to the API server.',
+        cmd: '# /var/lib/kubelet/config.yaml\nauthentication:\n  anonymous:\n    enabled: false\nauthorization:\n  mode: Webhook\nreadOnlyPort: 0' },
+      { id: 'gvisor', label: 'gVisor / Kata', d: 'mv', kind: 'config',
+        note: 'Sandboxed container runtimes. Register a RuntimeClass, then reference it from the Pod.',
+        cmd: 'kind: RuntimeClass\nmetadata:\n  name: gvisor\nhandler: runsc\n\n# in the Pod spec:\nruntimeClassName: gvisor' },
+      { id: 'falco', label: 'Falco', d: 'rt', kind: 'tool',
+        note: 'Detects suspicious syscalls at runtime, such as a shell spawned in a container. Custom rules go in the local rules file.',
+        cmd: 'tail -f /var/log/syslog | grep falco\n# /etc/falco/falco_rules.local.yaml' },
+      { id: 'kubebench-n', label: 'kube-bench worker checks', d: 'cs', kind: 'tool', key: 'kubebench',
+        note: 'Same tool as on the Cluster layer, run against the worker node (kubelet and host files).',
+        cmd: 'kube-bench run --targets node' }
+    ]},
+    { id: 'deploy', name: 'Deployment', what: 'Manifests and the policy that checks them', icon: 'deploy', items: [
+      { id: 'kubesec', label: 'kubesec', d: 'sc', kind: 'tool',
+        note: 'Scores one manifest against its own best-practice rules, not a named standard. Critical failures subtract points and advice adds them.',
+        cmd: 'kubesec scan deployment.yaml' },
+      { id: 'kubelinter', label: 'kube-linter', d: 'sc', kind: 'tool',
+        note: 'Configurable lint checks for manifests and Helm charts.',
+        cmd: 'kube-linter lint deployment.yaml' },
+      { id: 'kubescape', label: 'Kubescape', d: 'sc', kind: 'tool',
+        note: 'Scores against NSA-CISA, MITRE ATT&CK or CIS. Scans manifests, Helm charts and live clusters.',
+        cmd: 'kubescape scan framework nsa deployment.yaml' },
+      { id: 'trivy-c', label: 'Trivy config scan', d: 'sc', kind: 'tool', key: 'trivy',
+        note: 'Finds misconfigurations in YAML, Helm charts and Dockerfiles.',
+        cmd: 'trivy config ./manifests/' },
+      { id: 'gatekeeper', label: 'Gatekeeper / Kyverno', d: 'mv', kind: 'tool',
+        note: 'Admission policy engines. Gatekeeper uses Rego ConstraintTemplates, Kyverno uses YAML ClusterPolicies. The API server asks them before storing an object.',
+        cmd: 'kubectl get constrainttemplates\nkubectl get constraints' },
+      { id: 'psa', label: 'Pod Security Admission', d: 'mv', kind: 'config',
+        note: 'Enforces the Pod Security Standards (privileged, baseline, restricted) per namespace using labels.',
+        cmd: 'kubectl label ns dev \\\n  pod-security.kubernetes.io/enforce=restricted' },
+      { id: 'quota', label: 'ResourceQuota', d: 'mv', kind: 'config',
+        note: 'Caps what a namespace can consume, which limits the damage from a compromised or runaway workload.',
+        cmd: 'kubectl create quota dev-quota \\\n  --hard=cpu=2,memory=4Gi,pods=10 -n dev' }
+    ]},
+    { id: 'pod', name: 'Pod', what: 'How containers actually run', icon: 'pod', items: [
+      { id: 'secctx', label: 'securityContext', d: 'mv', kind: 'config',
+        note: 'The main knob for container hardening.',
+        cmd: 'securityContext:\n  runAsNonRoot: true\n  readOnlyRootFilesystem: true\n  allowPrivilegeEscalation: false\n  capabilities:\n    drop: ["ALL"]' },
+      { id: 'nopriv', label: 'No privileged / hostPath', d: 'mv', kind: 'config',
+        note: 'Privileged containers and host namespaces or mounts break isolation between the container and the node.',
+        cmd: 'privileged: false\n# avoid: hostPath, hostNetwork, hostPID, hostIPC' },
+      { id: 'secrets', label: 'Secrets as volumes', d: 'mv', kind: 'config',
+        note: 'Prefer mounting Secrets as files over env vars, which leak through logs and child processes. Never commit them to manifests.',
+        cmd: 'volumes:\n- name: db\n  secret:\n    secretName: db-creds' },
+      { id: 'mtls', label: 'mTLS (Istio, Cilium)', d: 'mv', kind: 'config',
+        note: 'Encrypts and authenticates Pod-to-Pod traffic, usually through a service mesh.',
+        cmd: 'kind: PeerAuthentication\nspec:\n  mtls:\n    mode: STRICT' },
+      { id: 'netpol', label: 'NetworkPolicy', d: 'cs', kind: 'config',
+        note: 'Start from default deny, then allow only the traffic you need.',
+        cmd: 'kind: NetworkPolicy\nspec:\n  podSelector: {}\n  policyTypes: ["Ingress", "Egress"]' },
+      { id: 'satoken', label: 'ServiceAccount token off', d: 'ch', kind: 'config',
+        note: 'Pods that never call the API should not carry a token.',
+        cmd: 'automountServiceAccountToken: false' },
+      { id: 'immutable', label: 'Immutable containers', d: 'rt', kind: 'config',
+        note: 'If a container filesystem never changes, any change is suspicious. Use emptyDir for scratch space.',
+        cmd: 'readOnlyRootFilesystem: true' },
+      { id: 'seccomp-p', label: 'seccomp / AppArmor in spec', d: 'sh', kind: 'config', key: 'seccomp',
+        note: 'Reference the profile from the Pod. On older clusters AppArmor uses an annotation, newer ones have an appArmorProfile field.',
+        cmd: 'securityContext:\n  seccompProfile:\n    type: RuntimeDefault' }
+    ]},
+    { id: 'image', name: 'Container image', what: 'The built, packaged artifact', icon: 'image', items: [
+      { id: 'trivy-i', label: 'Trivy image scan', d: 'sc', kind: 'tool', key: 'trivy',
+        note: 'Scans an image for known CVEs in OS packages and libraries.',
+        cmd: 'trivy image --severity HIGH,CRITICAL nginx:1.27' },
+      { id: 'distroless', label: 'Distroless / minimal base', d: 'sc', kind: 'config',
+        note: 'Fewer packages means fewer CVEs and fewer tools for an attacker. Use multi-stage builds so compilers stay out of the final image.',
+        cmd: 'FROM gcr.io/distroless/static-debian12\nUSER nonroot' },
+      { id: 'hadolint', label: 'hadolint', d: 'sc', kind: 'tool',
+        note: 'Lints Dockerfiles against best practices.',
+        cmd: 'hadolint Dockerfile' },
+      { id: 'cosign', label: 'cosign signing', d: 'sc', kind: 'tool',
+        note: 'Sign images in CI and verify the signature before deploying.',
+        cmd: 'cosign sign --key cosign.key registry/app:1.0\ncosign verify --key cosign.pub registry/app:1.0' },
+      { id: 'registries', label: 'Allowed registries', d: 'sc', kind: 'config',
+        note: 'Only allow images from registries you trust, enforced with Gatekeeper, Kyverno or ImagePolicyWebhook.' },
+      { id: 'sbom', label: 'SBOM (syft)', d: 'sc', kind: 'tool',
+        note: 'A bill of materials listing every package inside the image.',
+        cmd: 'syft nginx:1.27' },
+      { id: 'digest', label: 'Pin by digest', d: 'sc', kind: 'config',
+        note: 'Tags can be moved. A digest always points to the same bytes.',
+        cmd: 'image: nginx@sha256:<digest>' },
+      { id: 'ipw', label: 'ImagePolicyWebhook', d: 'sc', kind: 'config',
+        note: 'API server admission plugin that asks an external service whether an image is allowed.',
+        cmd: '--enable-admission-plugins=ImagePolicyWebhook\n--admission-control-config-file=/etc/kubernetes/admission.yaml' }
+    ]},
+    { id: 'code', name: 'Application code', what: 'What your developers wrote', icon: 'code', items: [
+      { id: 'semgrep', label: 'SAST (Semgrep)', d: 'sc', kind: 'tool',
+        note: 'Static analysis of source code for insecure patterns.',
+        cmd: 'semgrep --config auto .' },
+      { id: 'trivy-fs', label: 'Dependency scan', d: 'sc', kind: 'tool', key: 'trivy',
+        note: 'Finds vulnerable libraries in lock files and source trees.',
+        cmd: 'trivy fs .' },
+      { id: 'gitleaks', label: 'Secret scanning', d: 'sc', kind: 'tool',
+        note: 'Finds API keys and passwords committed to git.',
+        cmd: 'gitleaks detect --source .' },
+      { id: 'owasp', label: 'OWASP Top 10', d: 'mv', kind: 'config',
+        note: 'The web application risk list: injection, broken access control, and so on. It applies to your code, not to cluster config.' }
+    ]}
+  ];
+
+  /* ---------- lookups ---------- */
+  var ITEMS = {};
+  var LAYER_BY_ID = {};
+  LAYERS.forEach(function (L) {
+    LAYER_BY_ID[L.id] = L;
+    L.items.forEach(function (it) { it.layer = L.id; it.gid = it.key || it.id; ITEMS[it.id] = it; });
+  });
+
+  /* ---------- helpers ---------- */
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function svgIcon(name, cls) {
+    var s = document.createElementNS(SVGNS, 'svg');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('aria-hidden', 'true');
+    if (cls) s.setAttribute('class', cls);
+    s.innerHTML = ICONS[name];
+    return s;
+  }
+  function el(tag, props, kids) {
+    var e = document.createElement(tag);
+    if (props) Object.keys(props).forEach(function (k) {
+      if (k === 'class') e.className = props[k];
+      else if (k === 'text') e.textContent = props[k];
+      else e.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function $(id) { return document.getElementById(id); }
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 3200);
+  }
+
+  /* ---------- build diagram ---------- */
+  var diagram = $('diagram');
+
+  function buildChip(it) {
+    var b = el('button', {
+      type: 'button', 'class': 'chip', 'data-id': it.id, 'data-d': it.d, 'data-kind': it.kind,
+      'data-gid': it.gid, 'aria-pressed': 'false'
+    });
+    if (it.key) b.setAttribute('data-key', it.key);
+    b.appendChild(svgIcon(it.kind === 'tool' ? 'wrench' : 'sliders', 'ico'));
+    b.appendChild(el('span', { 'class': 'dot' }));
+    b.appendChild(el('span', { text: it.label }));
+    b.title = DOMAINS[it.d].name + ' · ' + (it.kind === 'tool' ? 'tool you run' : 'config you set');
+    return b;
+  }
+
+  function buildLayer(i) {
+    var L = LAYERS[i];
+    var sec = el('section', { 'class': 'layer l-' + L.id, 'data-layer': L.id, 'aria-labelledby': 'h-' + L.id });
+    var icon = el('span', { 'class': 'icon', 'aria-hidden': 'true' });
+    icon.appendChild(svgIcon(L.icon));
+    var htext = el('div', { 'class': 'htext' }, [
+      el('h2', { id: 'h-' + L.id, text: L.name }),
+      el('span', { 'class': 'what', text: L.what })
+    ]);
+    var place = el('button', { type: 'button', 'class': 'place-btn', text: 'Place here' });
+    var col = el('button', { type: 'button', 'class': 'collapse-btn', 'aria-expanded': 'true', 'aria-label': 'Toggle chips in ' + L.name });
+    col.appendChild(svgIcon('chevron'));
+    var actions = el('div', { 'class': 'layer-actions' }, [place, col]);
+    sec.appendChild(el('header', null, [icon, htext, actions]));
+
+    var ul = el('ul', { 'class': 'chips' });
+    L.items.forEach(function (it) { var li = el('li'); li.style.display = 'contents'; li.appendChild(buildChip(it)); ul.appendChild(li); });
+    sec.appendChild(ul);
+    if (i + 1 < LAYERS.length) sec.appendChild(buildLayer(i + 1));
+    return sec;
+  }
+  diagram.appendChild(buildLayer(0));
+
+  /* ---------- toolbar build ---------- */
+  var domainRow = $('domainRow');
+  Object.keys(DOMAINS).forEach(function (k) {
+    var p = el('button', { type: 'button', 'class': 'pill', 'data-d': k, 'aria-pressed': 'false' }, [
+      el('span', { 'class': 'dot' }),
+      el('span', { text: DOMAINS[k].name }),
+      el('span', { 'class': 'w', text: DOMAINS[k].w + '%' })
+    ]);
+    domainRow.appendChild(p);
+  });
+
+  var kindSeg = $('kindSeg');
+  [['all', 'All', null], ['tool', 'Tools (you run)', 'wrench'], ['config', 'Config (you set)', 'sliders']].forEach(function (k, idx) {
+    var b = el('button', { type: 'button', 'data-kind': k[0], 'aria-pressed': idx === 0 ? 'true' : 'false' });
+    if (k[2]) b.appendChild(svgIcon(k[2], 'ico'));
+    b.appendChild(el('span', { text: k[1] }));
+    kindSeg.appendChild(b);
+  });
+
+  /* ---------- filters ---------- */
+  var filter = { d: null, kind: 'all' };
+  function applyFilters() {
+    diagram.querySelectorAll('.chip').forEach(function (c) {
+      var ok = (!filter.d || c.dataset.d === filter.d) && (filter.kind === 'all' || c.dataset.kind === filter.kind);
+      c.classList.toggle('dim', !ok);
+    });
+    domainRow.querySelectorAll('.pill').forEach(function (p) { p.setAttribute('aria-pressed', String(filter.d === p.dataset.d)); });
+    kindSeg.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(filter.kind === b.dataset.kind)); });
+  }
+  domainRow.addEventListener('click', function (e) {
+    var p = e.target.closest('.pill'); if (!p) return;
+    filter.d = filter.d === p.dataset.d ? null : p.dataset.d; applyFilters();
+  });
+  kindSeg.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    filter.kind = b.dataset.kind; applyFilters();
+  });
+
+  /* ---------- collapse ---------- */
+  var allCollapsed = false;
+  function setCollapsed(layer, on) {
+    layer.classList.toggle('collapsed', on);
+    var btn = layer.querySelector(':scope > header .collapse-btn');
+    if (btn) btn.setAttribute('aria-expanded', String(!on));
+  }
+  $('collapseBtn').addEventListener('click', function () {
+    allCollapsed = !allCollapsed;
+    diagram.querySelectorAll('.layer').forEach(function (l) { setCollapsed(l, allCollapsed); });
+    this.textContent = allCollapsed ? 'Expand all' : 'Collapse all';
+  });
+
+  /* ---------- inspector ---------- */
+  var inspector = $('inspector');
+  var pinned = null, hovered = null;
+
+  function renderEmpty() {
+    inspector.textContent = '';
+    var wrap = el('div', { 'class': 'empty' });
+    wrap.appendChild(el('h3', { text: 'Chip details' }));
+    wrap.appendChild(el('p', { text: 'Hover or click a chip to see what it is, its exam domain, and a command or YAML key to remember.' }));
+    wrap.appendChild(el('p', { text: 'Tools have a wrench and a solid border. Config has sliders and a dashed border.' }));
+    wrap.appendChild(el('p', { text: 'If a tool appears in several layers (Trivy, kube-bench, seccomp), every matching chip lights up.' }));
+    inspector.appendChild(wrap);
+  }
+
+  function renderItem(it) {
+    inspector.textContent = '';
+    inspector.appendChild(el('h3', { text: it.label }));
+
+    var dotSpan = el('span', { 'class': 'dot', 'data-d': it.d });
+    var meta = el('div', { 'class': 'meta' }, [
+      el('span', null, [el('span', { text: 'Layer:' }), el('b', { text: LAYER_BY_ID[it.layer].name })]),
+      el('span', null, [dotSpan, el('b', { text: DOMAINS[it.d].name }), el('span', { text: '(' + DOMAINS[it.d].w + '% of exam)' })]),
+      el('span', null, [svgIcon(it.kind === 'tool' ? 'wrench' : 'sliders', 'ico'), el('b', { text: it.kind === 'tool' ? 'Tool you run' : 'Config you set' })])
+    ]);
+    inspector.appendChild(meta);
+    inspector.appendChild(el('p', { 'class': 'note', text: it.note }));
+
+    if (it.cmd) {
+      var wrap = el('div', { 'class': 'codewrap' });
+      var pre = el('pre'); pre.appendChild(el('code', { text: it.cmd }));
+      var cp = el('button', { type: 'button', 'class': 'copy', text: 'Copy' });
+      cp.addEventListener('click', function () {
+        var done = function () { cp.textContent = 'Copied'; setTimeout(function () { cp.textContent = 'Copy'; }, 1200); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(it.cmd).then(done, function () { toast('Copy failed. Select the text instead.'); });
+        else toast('Copy not available here. Select the text instead.');
+      });
+      wrap.appendChild(pre); wrap.appendChild(cp);
+      inspector.appendChild(wrap);
+    }
+
+    if (it.key) {
+      var others = Object.keys(ITEMS).map(function (k) { return ITEMS[k]; }).filter(function (o) { return o.key === it.key && o.id !== it.id; });
+      if (others.length) {
+        var ul = el('ul');
+        others.forEach(function (o) {
+          var b = el('button', { type: 'button', text: LAYER_BY_ID[o.layer].name + ': ' + o.label });
+          b.addEventListener('click', function () { jumpTo(o.id); });
+          ul.appendChild(el('li', null, [b]));
+        });
+        inspector.appendChild(el('div', { 'class': 'also' }, [el('h4', { text: 'Also shows up in' }), ul]));
+      }
+    }
+    if (pinned === it.id) inspector.appendChild(el('div', { 'class': 'pinned', text: 'Pinned. Click the chip again to unpin.' }));
+  }
+
+  function refresh() {
+    var id = hovered || pinned;
+    var it = id ? ITEMS[id] : null;
+    if (it) renderItem(it); else renderEmpty();
+    var key = it && it.key ? it.key : null;
+    diagram.querySelectorAll('.chip').forEach(function (c) {
+      c.classList.toggle('related', !!key && c.dataset.key === key);
+      c.setAttribute('aria-pressed', String(c.dataset.id === pinned));
+    });
+  }
+
+  function jumpTo(id) {
+    pinned = id; hovered = null;
+    var chip = diagram.querySelector('.chip[data-id="' + id + '"]');
+    if (chip) {
+      var layer = chip.closest('.layer');
+      if (layer.classList.contains('collapsed')) setCollapsed(layer, false);
+      chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    refresh();
+  }
+
+  diagram.addEventListener('mouseover', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    hovered = c.dataset.id; refresh();
+  });
+  diagram.addEventListener('mouseout', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    if (e.relatedTarget && c.contains(e.relatedTarget)) return;
+    hovered = null; refresh();
+  });
+  diagram.addEventListener('focusin', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    hovered = c.dataset.id; refresh();
+  });
+  diagram.addEventListener('focusout', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    hovered = null; refresh();
+  });
+
+  diagram.addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip');
+    if (chip) { pinned = pinned === chip.dataset.id ? null : chip.dataset.id; refresh(); return; }
+    var tg = e.target.closest('.collapse-btn');
+    if (tg) { var l = tg.closest('.layer'); setCollapsed(l, !l.classList.contains('collapsed')); return; }
+    if (test.active) { var layer = e.target.closest('.layer'); if (layer) attemptPlace(layer); }
+  });
+
+  /* ---------- self-test ---------- */
+  var test = { active: false, groups: [], selected: null, placed: 0, total: 0, mistakes: 0 };
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  function startTest() {
+    test.active = true; document.body.classList.add('testing');
+    $('testBtn').setAttribute('aria-pressed', 'true');
+    filter.d = null; filter.kind = 'all'; applyFilters();
+    pinned = null; hovered = null; refresh();
+    diagram.querySelectorAll('.layer').forEach(function (l) { setCollapsed(l, false); });
+    allCollapsed = false; $('collapseBtn').textContent = 'Collapse all';
+    diagram.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('placed'); });
+
+    var map = {};
+    Object.keys(ITEMS).forEach(function (k) {
+      var it = ITEMS[k];
+      var g = map[it.gid] || (map[it.gid] = { gid: it.gid, label: KEYNAMES[it.gid] || it.label, layers: {} });
+      g.layers[it.layer] = true;
+    });
+    test.groups = shuffle(Object.keys(map).map(function (k) { return map[k]; }));
+    test.total = test.groups.length; test.placed = 0; test.mistakes = 0; test.selected = null;
+    renderTray();
+    setMsg('Pick a chip below, then click the layer it belongs to.');
+    $('testbar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function endTest() {
+    test.active = false; document.body.classList.remove('testing');
+    $('testBtn').setAttribute('aria-pressed', 'false');
+    diagram.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('placed'); });
+  }
+
+  function setMsg(m) {
+    $('testMsg').textContent = m;
+    $('testScore').textContent = test.placed + ' of ' + test.total + ' placed · ' + test.mistakes + ' mistake' + (test.mistakes === 1 ? '' : 's');
+  }
+
+  function renderTray() {
+    var tray = $('tray'); tray.textContent = '';
+    test.groups.forEach(function (g) {
+      var b = el('button', { type: 'button', 'data-gid': g.gid, 'aria-pressed': String(test.selected === g.gid), text: g.label });
+      tray.appendChild(b);
+    });
+  }
+
+  $('tray').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    test.selected = test.selected === b.dataset.gid ? null : b.dataset.gid;
+    renderTray();
+    setMsg(test.selected ? 'Now click the layer for "' + b.textContent + '".' : 'Pick a chip below, then click the layer it belongs to.');
+  });
+
+  function attemptPlace(layerEl) {
+    if (!test.selected) { setMsg('Pick a chip from the tray first.'); return; }
+    var g = test.groups.filter(function (x) { return x.gid === test.selected; })[0];
+    var layerId = layerEl.dataset.layer;
+    if (g.layers[layerId]) {
+      var chip = layerEl.querySelector(':scope > .chips .chip[data-gid="' + g.gid + '"]');
+      if (chip) chip.classList.add('placed');
+      test.groups = test.groups.filter(function (x) { return x !== g; });
+      test.placed++; test.selected = null; renderTray();
+      var others = Object.keys(g.layers).filter(function (k) { return k !== layerId; }).map(function (k) { return LAYER_BY_ID[k].name; });
+      var msg = 'Correct: ' + g.label + ' belongs in ' + LAYER_BY_ID[layerId].name + '.';
+      if (others.length) msg += ' It also appears in ' + others.join(', ') + '.';
+      if (!test.groups.length) msg = 'All placed with ' + test.mistakes + ' mistake' + (test.mistakes === 1 ? '' : 's') + '. Restart to shuffle again.';
+      setMsg(msg);
+    } else {
+      test.mistakes++;
+      layerEl.classList.remove('wrong'); void layerEl.offsetWidth; layerEl.classList.add('wrong');
+      setMsg('Not ' + LAYER_BY_ID[layerId].name + '. Try another layer.');
+    }
+  }
+
+  $('testBtn').addEventListener('click', function () { if (test.active) endTest(); else startTest(); });
+  $('restartBtn').addEventListener('click', startTest);
+  $('revealBtn').addEventListener('click', endTest);
+
+  /* ---------- export ---------- */
+  $('printBtn').addEventListener('click', function () { window.print(); });
+
+  function inlineStyles(src, dst) {
+    var cs = getComputedStyle(src), s = '';
+    for (var i = 0; i < cs.length; i++) s += cs[i] + ':' + cs.getPropertyValue(cs[i]) + ';';
+    dst.setAttribute('style', s);
+    for (var j = 0; j < src.children.length; j++) inlineStyles(src.children[j], dst.children[j]);
+  }
+
+  $('pngBtn').addEventListener('click', function () {
+    try {
+      var node = diagram;
+      var clone = node.cloneNode(true);
+      inlineStyles(node, clone);
+      clone.querySelectorAll('.layer-actions').forEach(function (n) { n.parentNode.removeChild(n); });
+      var pad = 24, w = node.offsetWidth + pad * 2, h = node.offsetHeight + pad * 2;
+      var wrap = document.createElement('div');
+      wrap.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      wrap.setAttribute('style', 'background:' + getComputedStyle(document.body).backgroundColor + ';padding:' + pad + 'px;width:' + w + 'px;box-sizing:border-box;');
+      wrap.appendChild(clone);
+      var xml = new XMLSerializer().serializeToString(wrap);
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '"><foreignObject x="0" y="0" width="100%" height="100%">' + xml + '</foreignObject></svg>';
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var scale = 2, canvas = document.createElement('canvas');
+          canvas.width = w * scale; canvas.height = h * scale;
+          var ctx = canvas.getContext('2d'); ctx.scale(scale, scale); ctx.drawImage(img, 0, 0);
+          canvas.toBlob(function (blob) {
+            if (!blob) { toast('PNG export is blocked in this browser. Use Print / PDF instead.'); return; }
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = 'k8s-security-layers.png';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+            toast('PNG downloaded.');
+          }, 'image/png');
+        } catch (err) { toast('PNG export is blocked in this browser. Use Print / PDF instead.'); }
+      };
+      img.onerror = function () { toast('PNG export failed. Use Print / PDF instead.'); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    } catch (err) { toast('PNG export failed. Use Print / PDF instead.'); }
+  });
+
+  /* ---------- init ---------- */
+  applyFilters();
+  refresh();
+})();
+</script>
+</body>
+</html>
